@@ -27,7 +27,8 @@ export function ApprovalPanel({ queue, isProcessing, onApprove, onReject, latest
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
 
-  const pendingQueue = queue.filter((q) => q.status === "pending");
+  const safeQueue = queue ?? [];
+  const pendingQueue = safeQueue.filter((q) => q.status === "pending");
   const selected = queue.find((q) => q.id === selectedId);
 
   // Auto-select latest result when it arrives
