@@ -70,10 +70,10 @@ export function ApprovalPanel({ queue, isProcessing, onApprove, onReject, latest
 
       <div className="flex-1 overflow-y-auto">
         {/* Queue list - always visible when there are items */}
-        {queue.length > 1 && (
+        {safeQueue.length > 1 && (
           <div className="px-4 pt-3 pb-1 space-y-1">
             <div className="text-xs text-muted-foreground uppercase tracking-wider px-1 mb-2">Approval Queue</div>
-            {queue.map((item) => (
+            {safeQueue.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setSelectedId(item.id)}
@@ -100,7 +100,7 @@ export function ApprovalPanel({ queue, isProcessing, onApprove, onReject, latest
 
         {/* Detail view */}
         <div className="p-5">
-          {!result && !isProcessing && queue.length === 0 && (
+          {!result && !isProcessing && safeQueue.length === 0 && (
             <div className="flex items-center justify-center h-[300px] text-muted-foreground text-sm">
               <div className="text-center space-y-2">
                 <Shield className="h-8 w-8 mx-auto opacity-30" />
@@ -110,7 +110,7 @@ export function ApprovalPanel({ queue, isProcessing, onApprove, onReject, latest
             </div>
           )}
 
-          {isProcessing && !result && queue.length === 0 && (
+          {isProcessing && !result && safeQueue.length === 0 && (
             <div className="flex items-center justify-center h-[300px] text-muted-foreground text-sm">
               <div className="text-center space-y-3">
                 <div className="flex items-center justify-center gap-1">
