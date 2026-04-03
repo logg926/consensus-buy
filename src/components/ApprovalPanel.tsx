@@ -2,18 +2,42 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, TrendingDown, Star, Shield, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProcurementResult } from "@/lib/mockAgentData";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { ConsensusConfetti } from "@/components/ConsensusConfetti";
 
 interface ApprovalPanelProps {
   result: ProcurementResult | null;
   isProcessing: boolean;
+  onApprove?: (result: ProcurementResult) => void;
 }
 
-export function ApprovalPanel({ result, isProcessing }: ApprovalPanelProps) {
+export function ApprovalPanel({ result, isProcessing, onApprove }: ApprovalPanelProps) {
   const [approved, setApproved] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+
+  // Reset approved state when a new result comes in
+  useEffect(() => {
+    setApproved(false);
+  }, [result]);
+
+  // Fire confetti when result arrives (consensus reached)
+  useEffect(() => {
+    if (result) {
+      setShowConfetti(true);
+      const timer = setTimeout(() => setShowConfetti(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [result]);
+
+  const handleApprove = () => {
+    setApproved(true);
+    if (result && onApprove) onApprove(result);
+  };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative overflow-hidden">
+      <ConsensusConfetti trigger={showConfetti} />
+
       <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
         <Shield className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-semibold tracking-wide uppercase text-foreground">CFO Approval</h2>
@@ -51,14 +75,31 @@ export function ApprovalPanel({ result, isProcessing }: ApprovalPanelProps) {
               transition={{ duration: 0.4, ease: "easeOut" }}
               className="space-y-5"
             >
+              {/* Consensus reached banner */}
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="rounded-lg border border-agent-quality/30 bg-agent-quality/5 p-3 text-center"
+              >
+                <div className="text-xs font-semibold text-agent-quality uppercase tracking-widest">
+                  ✦ Consensus Reached ✦
+                </div>
+              </motion.div>
+
               {/* Savings hero */}
-              <div className="rounded-lg bg-muted/50 border border-border p-4 glow-primary text-center">
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.4, type: "spring", stiffness: 200 }}
+                className="rounded-lg bg-muted/50 border border-border p-4 glow-primary text-center"
+              >
                 <TrendingDown className="h-6 w-6 text-agent-quality mx-auto mb-2" />
                 <div className="text-3xl font-bold text-agent-quality">${result.savings}</div>
                 <div className="text-xs text-muted-foreground mt-1">
                   {result.savingsPercent}% savings identified
                 </div>
-              </div>
+              </motion.div>
 
               {/* Recommendation */}
               <div className="space-y-3">
@@ -106,7 +147,7 @@ export function ApprovalPanel({ result, isProcessing }: ApprovalPanelProps) {
               {/* Approval button */}
               {!approved ? (
                 <Button
-                  onClick={() => setApproved(true)}
+                  onClick={handleApprove}
                   className="w-full glow-primary"
                   size="lg"
                 >
