@@ -354,8 +354,8 @@ const Index = () => {
             <Cpu className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight text-foreground">ConsensusBuy</h1>
-            <p className="text-xs text-muted-foreground">Multi-Agent Procurement Swarm</p>
+            <h1 className="text-sm font-bold tracking-tight text-foreground">Sassy CFO 💳</h1>
+            <p className="text-xs text-muted-foreground">Vibe-Based Expense Approvals</p>
           </div>
         </div>
 
