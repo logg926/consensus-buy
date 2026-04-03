@@ -1,0 +1,23 @@
+[project]
+name = "consensusbuy-backend"
+version = "0.1.0"
+description = "Deep Agents backend for ConsensusBuy"
+requires-python = ">=3.11"
+dependencies = [
+  "deepagents>=0.3.3",
+  "fastapi>=0.116.1",
+  "httpx>=0.28.1",
+  "langchain>=0.3.27",
+  "langchain-openai>=0.3.29",
+  "pydantic>=2.11.7",
+  "python-dotenv>=1.1.1",
+  "uvicorn>=0.35.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

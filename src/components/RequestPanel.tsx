@@ -5,9 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import type { ConsensusMode } from "@/lib/consensusTypes";
+
+export interface PurchaseRequestDraft {
+  item: string;
+  budget: number;
+  justification: string;
+  mode: ConsensusMode;
+}
 
 interface RequestPanelProps {
-  onSubmit: (item: string, budget: number, justification: string) => void;
+  onSubmit: (draft: PurchaseRequestDraft) => void;
   isProcessing: boolean;
 }
 
@@ -15,11 +23,20 @@ export function RequestPanel({ onSubmit, isProcessing }: RequestPanelProps) {
   const [item, setItem] = useState("");
   const [budget, setBudget] = useState("");
   const [justification, setJustification] = useState("");
+  const [mode, setMode] = useState<ConsensusMode>("live-amazon");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!item || !budget) return;
-    onSubmit(item, parseFloat(budget), justification);
+    if (!item || !budget) {
+      return;
+    }
+
+    onSubmit({
+      item,
+      budget: parseFloat(budget),
+      justification,
+      mode,
+    });
   };
 
   return (
@@ -32,6 +49,44 @@ export function RequestPanel({ onSubmit, isProcessing }: RequestPanelProps) {
       </div>
 
       <form onSubmit={handleSubmit} className="flex-1 flex flex-col p-5 gap-5">
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+            Decision Mode
+          </Label>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              {
+                id: "live-amazon" as const,
+                title: "Live Amazon",
+                detail: "Fast real market scan with deterministic comparison.",
+              },
+              {
+                id: "deep-agents" as const,
+                title: "Deep Agents",
+                detail: "Slower board-style reasoning with timeout fallback.",
+              },
+            ].map((option) => {
+              const isActive = mode === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setMode(option.id)}
+                  disabled={isProcessing}
+                  className={`rounded-lg border p-3 text-left transition-colors ${
+                    isActive
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border bg-muted/20 text-muted-foreground hover:bg-muted/40"
+                  } ${isProcessing ? "opacity-60" : ""}`}
+                >
+                  <div className="text-sm font-medium">{option.title}</div>
+                  <div className="mt-1 text-[11px] leading-relaxed">{option.detail}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="space-y-2">
           <Label htmlFor="item" className="text-xs text-muted-foreground uppercase tracking-wider">
             Item Description
@@ -81,6 +136,10 @@ export function RequestPanel({ onSubmit, isProcessing }: RequestPanelProps) {
           />
         </div>
 
+        <div className="rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+          Crossmint details move to CFO approval. Live Amazon is the stable fast path. Deep Agents attempts the full board flow, then degrades cleanly if it times out.
+        </div>
+
         <div className="mt-auto">
           <Button
             type="submit"
@@ -114,7 +173,11 @@ export function RequestPanel({ onSubmit, isProcessing }: RequestPanelProps) {
                 <button
                   key={preset.item}
                   type="button"
-                  onClick={() => { setItem(preset.item); setBudget(preset.budget); setJustification("Team equipment upgrade"); }}
+                  onClick={() => {
+                    setItem(preset.item);
+                    setBudget(preset.budget);
+                    setJustification("Team equipment upgrade");
+                  }}
                   className="text-xs px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
                 >
                   {preset.item.split(" ").slice(0, 2).join(" ")} — ${preset.budget}

@@ -1,12 +1,15 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Cpu, ShoppingCart, BarChart3, History } from "lucide-react";
-import { RequestPanel } from "@/components/RequestPanel";
+import { RequestPanel, type PurchaseRequestDraft } from "@/components/RequestPanel";
 import { AgentLog } from "@/components/AgentLog";
 import { ApprovalPanel, QueuedRequest } from "@/components/ApprovalPanel";
 import { SpendingAnalysis } from "@/components/SpendingAnalysis";
 import { PurchaseHistory, PurchaseRecord } from "@/components/PurchaseHistory";
-import { generateMockDebate, AgentLogEntry, AgentRole } from "@/lib/mockAgentData";
+import { AgentLogEntry, AgentRole, ConsensusMode, ConsensusResponse } from "@/lib/consensusTypes";
+import { executeApprovedPurchase, requestConsensusRecommendation, streamConsensusRecommendation } from "@/lib/consensusApi";
+import { createMockConsensusFallback } from "@/lib/mockConsensusFallback";
+import { useToast } from "@/hooks/use-toast";
 
 type Tab = "procurement" | "spending" | "history";
 
@@ -32,6 +35,21 @@ const SEED_QUEUE: QueuedRequest[] = [
     status: "pending",
     submittedAt: "10 min ago",
     requester: "Priya Patel",
+    execution: {
+      productLocator: "",
+      recipient: {
+        email: "procurement@example.com",
+        physicalAddress: {
+          name: "Priya Patel",
+          line1: "123 Market St",
+          city: "San Francisco",
+          state: "CA",
+          postalCode: "94105",
+          country: "US",
+        },
+      },
+      locale: "en-US",
+    },
   },
   {
     id: "seed-q2",
@@ -51,8 +69,66 @@ const SEED_QUEUE: QueuedRequest[] = [
     status: "pending",
     submittedAt: "25 min ago",
     requester: "Alex Rivera",
+    execution: {
+      productLocator: "",
+      recipient: {
+        email: "ops@example.com",
+        physicalAddress: {
+          name: "Alex Rivera",
+          line1: "456 Broadway",
+          city: "New York",
+          state: "NY",
+          postalCode: "10012",
+          country: "US",
+        },
+      },
+      locale: "en-US",
+    },
   },
 ];
+
+function getModeLabel(mode: ConsensusMode) {
+  return mode === "deep-agents" ? "Deep Agents" : "Live Amazon";
+}
+
+function getExecutionLabel(metadata: ConsensusResponse["metadata"]) {
+  if (metadata.provider === "n8n") {
+    return "n8n + Deep Agents";
+  }
+
+  if (metadata.provider === "deepagents") {
+    return "Deep Agents";
+  }
+
+  if (metadata.provider === "searchapi" && metadata.degradedFromMode === "deep-agents") {
+    return "Live Amazon fallback";
+  }
+
+  if (metadata.provider === "searchapi") {
+    return "Live Amazon";
+  }
+
+  return "Fallback";
+}
+
+function getDefaultProductLocator(result: QueuedRequest["result"]) {
+  const recommendedAlternative = result.alternatives.find((alternative) => alternative.recommended);
+  return recommendedAlternative?.link || result.sourceLink || "";
+}
+
+function buildQueuedRequest(result: QueuedRequest["result"], draft: PurchaseRequestDraft): QueuedRequest {
+  return {
+    id: `req-${Date.now()}`,
+    result,
+    status: "pending",
+    submittedAt: "Just now",
+    requester: MOCK_REQUESTERS[Math.floor(Math.random() * MOCK_REQUESTERS.length)],
+    execution: {
+      productLocator: getDefaultProductLocator(result),
+      locale: "en-US",
+    },
+  };
+}
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<Tab>("procurement");
@@ -62,53 +138,177 @@ const Index = () => {
   const [approvalQueue, setApprovalQueue] = useState<QueuedRequest[]>(SEED_QUEUE);
   const [latestResultId, setLatestResultId] = useState<string | null>(null);
   const [purchaseRecords, setPurchaseRecords] = useState<PurchaseRecord[]>([]);
+  const [requestedModeLabel, setRequestedModeLabel] = useState("Live Amazon");
+  const [engineLabel, setEngineLabel] = useState("System Ready");
+  const [executingApprovalId, setExecutingApprovalId] = useState<string | null>(null);
+  const [processingHint, setProcessingHint] = useState<string | null>(null);
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    return () => {
+      timeoutsRef.current.forEach(clearTimeout);
+    };
+  }, []);
 
   const pendingCount = approvalQueue.filter((q) => q.status === "pending").length;
 
-  const handleSubmit = useCallback((item: string, budget: number) => {
+  const handleSubmit = useCallback(async (draft: PurchaseRequestDraft) => {
     timeoutsRef.current.forEach(clearTimeout);
     timeoutsRef.current = [];
     setLogEntries([]);
     setLatestResultId(null);
     setIsProcessing(true);
+    setRequestedModeLabel(getModeLabel(draft.mode));
+    setEngineLabel(draft.mode === "deep-agents" ? "Deep Agents pending" : "Live Amazon pending");
     setActiveAgent("scraper");
-
-    const { logs, result: finalResult } = generateMockDebate(item, budget);
-
-    logs.forEach((entry, i) => {
-      const tid = setTimeout(() => {
-        setActiveAgent(entry.agent);
-        setLogEntries((prev) => [...prev, entry]);
-        if (i === logs.length - 1) {
-          const finalTid = setTimeout(() => {
-            setActiveAgent(null);
-            setIsProcessing(false);
-
-            const newId = `req-${Date.now()}`;
-            const newRequest: QueuedRequest = {
-              id: newId,
-              result: finalResult,
-              status: "pending",
-              submittedAt: "Just now",
-              requester: MOCK_REQUESTERS[Math.floor(Math.random() * MOCK_REQUESTERS.length)],
-            };
-            setApprovalQueue((prev) => [newRequest, ...prev]);
-            setLatestResultId(newId);
-          }, 1500);
-          timeoutsRef.current.push(finalTid);
-        }
-      }, entry.timestamp);
-      timeoutsRef.current.push(tid);
-    });
-  }, []);
-
-  const handleApprove = useCallback((id: string) => {
-    setApprovalQueue((prev) =>
-      prev.map((q) => (q.id === id ? { ...q, status: "approved" as const } : q))
+    setProcessingHint(
+      draft.mode === "deep-agents"
+        ? "Deep Agents mode is planning the procurement workflow and preparing market research."
+        : "Live Amazon mode is planning the procurement workflow and preparing the market search.",
     );
+
+    const qualityHintTimeout = setTimeout(() => {
+      setActiveAgent("quality");
+      setProcessingHint(
+        draft.mode === "deep-agents"
+          ? "Deep Agents mode is comparing quality signals across the shortlisted options."
+          : "Quality Analyst is comparing live options on rating, review count, and durability risk.",
+      );
+    }, 4000);
+    const directorHintTimeout = setTimeout(() => {
+      setActiveAgent("director");
+      setProcessingHint(
+        draft.mode === "deep-agents"
+          ? "Deep Agents mode is drafting the recommendation. If it exceeds the timeout, it will degrade to Live Amazon."
+          : "Procurement Director is drafting the recommendation and savings summary.",
+      );
+    }, 8500);
+    timeoutsRef.current.push(qualityHintTimeout, directorHintTimeout);
+
+    try {
+      const response = await streamConsensusRecommendation(
+        draft.item,
+        draft.budget,
+        draft.justification,
+        draft.mode,
+        {
+          onProgress: (event) => {
+            setActiveAgent(event.agent);
+            setProcessingHint(event.message);
+          },
+          onLog: (entry) => {
+            setActiveAgent(entry.agent);
+            setLogEntries((prev) => [...prev, entry]);
+          },
+        },
+      );
+      setEngineLabel(getExecutionLabel(response.metadata));
+      if (response.logs.length === 0) {
+        setActiveAgent(null);
+        setIsProcessing(false);
+        setProcessingHint(null);
+        const newRequest = buildQueuedRequest(response.result, draft);
+        setApprovalQueue((prev) => [newRequest, ...prev]);
+        setLatestResultId(newRequest.id);
+        return;
+      }
+      setTimeout(() => {
+        setActiveAgent(null);
+        setIsProcessing(false);
+        setProcessingHint(null);
+        const newRequest = buildQueuedRequest(response.result, draft);
+        setApprovalQueue((prev) => [newRequest, ...prev]);
+        setLatestResultId(newRequest.id);
+      }, 300);
+    } catch (error) {
+      try {
+        const response = await requestConsensusRecommendation(draft.item, draft.budget, draft.justification, draft.mode);
+        setEngineLabel(getExecutionLabel(response.metadata));
+        response.logs.forEach((entry, index) => {
+          const tid = setTimeout(() => {
+            setActiveAgent(entry.agent);
+            setLogEntries((prev) => [...prev, entry]);
+
+            if (index === response.logs.length - 1) {
+              const finalTid = setTimeout(() => {
+                setActiveAgent(null);
+                setIsProcessing(false);
+                setProcessingHint(null);
+                const newRequest = buildQueuedRequest(response.result, draft);
+                setApprovalQueue((prev) => [newRequest, ...prev]);
+                setLatestResultId(newRequest.id);
+              }, 900);
+
+              timeoutsRef.current.push(finalTid);
+            }
+          }, index * 1000);
+
+          timeoutsRef.current.push(tid);
+        });
+        return;
+      } catch {
+        // Fall through to the frontend fallback below.
+      }
+
+      const fallback = createMockConsensusFallback(draft.item, draft.budget, draft.justification);
+      setEngineLabel(getExecutionLabel(fallback.metadata));
+      toast({
+        title: "Consensus API unavailable",
+        description: error instanceof Error ? error.message : "Using local fallback recommendation.",
+      });
+
+      fallback.logs.forEach((entry, index) => {
+        const tid = setTimeout(() => {
+          setActiveAgent(entry.agent);
+          setLogEntries((prev) => [...prev, entry]);
+
+          if (index === fallback.logs.length - 1) {
+            const finalTid = setTimeout(() => {
+              setActiveAgent(null);
+              setIsProcessing(false);
+              setProcessingHint(null);
+              const newRequest = buildQueuedRequest(fallback.result, draft);
+              setApprovalQueue((prev) => [newRequest, ...prev]);
+              setLatestResultId(newRequest.id);
+            }, 900);
+
+            timeoutsRef.current.push(finalTid);
+          }
+        }, index * 1200);
+
+        timeoutsRef.current.push(tid);
+      });
+    }
+  }, [toast]);
+
+  const handleApprove = useCallback(async (id: string, execution) => {
     const item = approvalQueue.find((q) => q.id === id);
-    if (item) {
+    if (!item) {
+      return;
+    }
+
+    setExecutingApprovalId(id);
+
+    try {
+      const crossmintOrder = await executeApprovedPurchase({
+        ...execution,
+        maxPrice: item.result.recommendedPrice.toFixed(2),
+      });
+
+      setApprovalQueue((prev) =>
+        prev.map((q) =>
+          q.id === id
+            ? {
+                ...q,
+                status: "approved" as const,
+                execution,
+                crossmintOrder,
+              }
+            : q,
+        ),
+      );
+
       const record: PurchaseRecord = {
         id: `purchase-${Date.now()}`,
         item: item.result.originalItem,
@@ -119,8 +319,20 @@ const Index = () => {
         status: "approved",
       };
       setPurchaseRecords((prev) => [record, ...prev]);
+      toast({
+        title: "Crossmint order created",
+        description: `${crossmintOrder.orderId} is now in phase ${crossmintOrder.phase}.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Crossmint handoff failed",
+        description: error instanceof Error ? error.message : "Unable to create Crossmint order.",
+        variant: "destructive",
+      });
+    } finally {
+      setExecutingApprovalId(null);
     }
-  }, [approvalQueue]);
+  }, [approvalQueue, toast]);
 
   const handleReject = useCallback((id: string) => {
     setApprovalQueue((prev) =>
@@ -135,7 +347,7 @@ const Index = () => {
   ];
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
       <header className="flex items-center justify-between px-6 py-3 border-b border-border bg-card/50">
         <div className="flex items-center gap-3">
           <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center glow-primary">
@@ -173,7 +385,13 @@ const Index = () => {
           })}
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="rounded-full border border-border bg-muted/30 px-2 py-1">
+            Mode: {requestedModeLabel}
+          </span>
+          <span className="rounded-full border border-border bg-muted/30 px-2 py-1">
+            Execution: {engineLabel}
+          </span>
           <span className={`h-2 w-2 rounded-full ${isProcessing ? "bg-agent-scraper animate-pulse-dot" : "bg-agent-quality"}`} />
           {isProcessing ? "Agents Active" : "System Ready"}
         </div>
@@ -185,7 +403,12 @@ const Index = () => {
             <RequestPanel onSubmit={handleSubmit} isProcessing={isProcessing} />
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="flex-1 min-w-0 border-r border-border panel-gradient">
-            <AgentLog entries={logEntries} activeAgent={activeAgent} />
+            <AgentLog
+              entries={logEntries}
+              activeAgent={activeAgent}
+              isProcessing={isProcessing}
+              processingHint={processingHint}
+            />
           </motion.div>
           <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }} className="w-[340px] flex-shrink-0 panel-gradient">
             <ApprovalPanel
@@ -194,6 +417,7 @@ const Index = () => {
               onApprove={handleApprove}
               onReject={handleReject}
               latestResultId={latestResultId}
+              executingApprovalId={executingApprovalId}
             />
           </motion.div>
         </div>

@@ -1,20 +1,40 @@
 import { useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bot, Search, Shield, Briefcase } from "lucide-react";
-import { AgentLogEntry, AgentRole } from "@/lib/mockAgentData";
+import { AgentLogEntry, AgentRole } from "@/lib/consensusTypes";
 
-const AGENT_CONFIG: Record<AgentRole, { icon: typeof Bot; colorClass: string; glowClass: string; dotColor: string }> = {
-  scraper: { icon: Search, colorClass: "text-agent-scraper", glowClass: "glow-scraper", dotColor: "bg-agent-scraper" },
-  quality: { icon: Shield, colorClass: "text-agent-quality", glowClass: "glow-quality", dotColor: "bg-agent-quality" },
-  director: { icon: Briefcase, colorClass: "text-agent-director", glowClass: "glow-director", dotColor: "bg-agent-director" },
+const AGENT_CONFIG: Record<AgentRole, { icon: typeof Bot; colorClass: string; dotColor: string; bubbleClass: string; label: string }> = {
+  scraper: {
+    icon: Search,
+    colorClass: "text-agent-scraper",
+    dotColor: "bg-agent-scraper",
+    bubbleClass: "bg-agent-scraper/10 border-agent-scraper/20",
+    label: "Market Scraper",
+  },
+  quality: {
+    icon: Shield,
+    colorClass: "text-agent-quality",
+    dotColor: "bg-agent-quality",
+    bubbleClass: "bg-agent-quality/10 border-agent-quality/20",
+    label: "Quality Analyst",
+  },
+  director: {
+    icon: Briefcase,
+    colorClass: "text-agent-director",
+    dotColor: "bg-agent-director",
+    bubbleClass: "bg-agent-director/10 border-agent-director/20",
+    label: "Procurement Director",
+  },
 };
 
 interface AgentLogProps {
   entries: AgentLogEntry[];
   activeAgent: AgentRole | null;
+  isProcessing?: boolean;
+  processingHint?: string | null;
 }
 
-export function AgentLog({ entries, activeAgent }: AgentLogProps) {
+export function AgentLog({ entries, activeAgent, isProcessing = false, processingHint = null }: AgentLogProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,13 +64,79 @@ export function AgentLog({ entries, activeAgent }: AgentLogProps) {
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-1 font-mono text-xs">
-        {entries.length === 0 && (
+        {entries.length === 0 && !isProcessing && (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             <div className="text-center space-y-2">
               <Bot className="h-8 w-8 mx-auto opacity-30" />
               <p>Awaiting procurement request...</p>
-              <p className="text-xs opacity-60">Three AI agents will debate the optimal purchase</p>
+              <p className="text-xs opacity-60">Consensus will appear here as a live group chat between the three agents</p>
             </div>
+          </div>
+        )}
+
+        {entries.length === 0 && isProcessing && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-muted/20 p-4">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Deep Agent Status</div>
+              <div className="mt-2 text-sm text-foreground">
+                {processingHint ?? "Deep Agent is planning the procurement workflow."}
+              </div>
+            </div>
+
+            {([
+              {
+                role: "scraper" as AgentRole,
+                title: "Plan + Search",
+                detail: "Planning the workflow and gathering real Amazon candidates.",
+              },
+              {
+                role: "quality" as AgentRole,
+                title: "Compare Quality",
+                detail: "Checking ratings, review volume, durability, and warranty signals.",
+              },
+              {
+                role: "director" as AgentRole,
+                title: "Write Recommendation",
+                detail: "Preparing the final CFO-ready recommendation and savings summary.",
+              },
+            ]).map((step) => {
+              const isActive = activeAgent === step.role;
+              const isCompleted =
+                (step.role === "scraper" && activeAgent !== "scraper" && activeAgent !== null) ||
+                (step.role === "quality" && activeAgent === "director");
+
+              return (
+                <div
+                  key={step.role}
+                  className={`rounded-lg border p-3 ${
+                    isActive
+                      ? "border-primary/30 bg-primary/10"
+                      : isCompleted
+                        ? "border-agent-quality/20 bg-agent-quality/10"
+                        : "border-border bg-muted/20"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className={`text-sm font-medium ${isActive ? "text-foreground" : "text-muted-foreground"}`}>
+                        {step.title}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">{step.detail}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`h-2 w-2 rounded-full ${
+                          isActive ? AGENT_CONFIG[step.role].dotColor : isCompleted ? "bg-agent-quality" : "bg-muted"
+                        } ${isActive ? "animate-pulse-dot" : ""}`}
+                      />
+                      <span className={`text-[10px] uppercase tracking-wider ${isActive ? AGENT_CONFIG[step.role].colorClass : "text-muted-foreground"}`}>
+                        {isActive ? "active" : isCompleted ? "done" : "queued"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -64,17 +150,23 @@ export function AgentLog({ entries, activeAgent }: AgentLogProps) {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25 }}
-                className={`flex gap-3 py-2 px-3 rounded-md ${entry.type === "result" ? "bg-muted/50" : ""}`}
+                className="flex gap-3 py-1.5"
               >
-                <div className={`flex-shrink-0 mt-0.5 ${config.colorClass}`}>
-                  <Icon className="h-3.5 w-3.5" />
+                <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border mt-0.5 ${config.bubbleClass}`}>
+                  <Icon className={`h-3.5 w-3.5 ${config.colorClass}`} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className={`font-semibold ${config.colorClass}`}>{entry.agentName}</span>
-                  <span className="text-muted-foreground mx-1.5">›</span>
-                  <span className={`${entry.type === "result" ? "text-foreground" : "text-muted-foreground"} break-words`}>
-                    {entry.message}
-                  </span>
+                  <div className="flex items-center gap-2 px-1 pb-1">
+                    <span className={`font-semibold ${config.colorClass}`}>{entry.agentName}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {entry.type === "thinking" ? "Thinking" : entry.type === "debate" ? "Debate" : "Decision"}
+                    </span>
+                  </div>
+                  <div className={`max-w-[92%] rounded-2xl border px-3 py-2 leading-relaxed ${config.bubbleClass}`}>
+                    <span className={entry.type === "result" ? "text-foreground" : "text-foreground/90"}>
+                      {entry.message}
+                    </span>
+                  </div>
                 </div>
               </motion.div>
             );
@@ -85,12 +177,25 @@ export function AgentLog({ entries, activeAgent }: AgentLogProps) {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-center gap-2 py-2 px-3 text-muted-foreground"
+            className="flex gap-3 py-2"
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${AGENT_CONFIG[activeAgent].dotColor} animate-pulse-dot`} />
-            <span className={`h-1.5 w-1.5 rounded-full ${AGENT_CONFIG[activeAgent].dotColor} animate-pulse-dot`} style={{ animationDelay: "0.2s" }} />
-            <span className={`h-1.5 w-1.5 rounded-full ${AGENT_CONFIG[activeAgent].dotColor} animate-pulse-dot`} style={{ animationDelay: "0.4s" }} />
-            <span className="text-xs ml-1">{AGENT_CONFIG[activeAgent].colorClass.replace("text-agent-", "")} is reasoning...</span>
+            <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border ${AGENT_CONFIG[activeAgent].bubbleClass}`}>
+              {(() => {
+                const ActiveIcon = AGENT_CONFIG[activeAgent].icon;
+                return <ActiveIcon className={`h-3.5 w-3.5 ${AGENT_CONFIG[activeAgent].colorClass}`} />;
+              })()}
+            </div>
+            <div className={`rounded-2xl border px-3 py-2 ${AGENT_CONFIG[activeAgent].bubbleClass}`}>
+              <div className="flex items-center gap-2">
+                <span className={`font-semibold ${AGENT_CONFIG[activeAgent].colorClass}`}>{AGENT_CONFIG[activeAgent].label}</span>
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Typing</span>
+              </div>
+              <div className="mt-1 flex items-center gap-1">
+                <span className={`h-1.5 w-1.5 rounded-full ${AGENT_CONFIG[activeAgent].dotColor} animate-pulse-dot`} />
+                <span className={`h-1.5 w-1.5 rounded-full ${AGENT_CONFIG[activeAgent].dotColor} animate-pulse-dot`} style={{ animationDelay: "0.2s" }} />
+                <span className={`h-1.5 w-1.5 rounded-full ${AGENT_CONFIG[activeAgent].dotColor} animate-pulse-dot`} style={{ animationDelay: "0.4s" }} />
+              </div>
+            </div>
           </motion.div>
         )}
       </div>
