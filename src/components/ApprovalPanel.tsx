@@ -29,7 +29,7 @@ export function ApprovalPanel({ queue, isProcessing, onApprove, onReject, latest
 
   const safeQueue = queue ?? [];
   const pendingQueue = safeQueue.filter((q) => q.status === "pending");
-  const selected = queue.find((q) => q.id === selectedId);
+  const selected = safeQueue.find((q) => q.id === selectedId);
 
   // Auto-select latest result when it arrives
   useEffect(() => {
