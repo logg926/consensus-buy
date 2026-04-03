@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: consensusbuy
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: SEARCHAPI_AMAZON_DOMAIN
+        value: amazon.com
+      - key: DEEP_AGENTS_TIMEOUT_SECONDS
+        value: "35"
+      - key: SEARCHAPI_API_KEY
+        sync: false
+      - key: MINIMAX_API_KEY
+        sync: false
+      - key: MINIMAX_BASE_URL
+        sync: false
+      - key: MINIMAX_MODEL
+        value: MiniMax-M2.5
+      - key: CROSSMINT_SERVER_API_KEY
+        sync: false
+      - key: CROSSMINT_API_BASE_URL
+        value: https://staging.crossmint.com/api/2022-06-09

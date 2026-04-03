@@ -25,6 +25,7 @@ Backend execution modes:
 
 - `n8n-webhook`: if `N8N_CONSENSUS_WEBHOOK_URL` is set, the backend forwards the request to n8n and expects the typed consensus payload back
 - `local-deepagents`: if MiniMax credentials are configured, the backend runs the three-agent workflow through Deep Agents with three specialist subagents
+- `live-market-heuristic`: the stable fast path that uses live Amazon SearchAPI results plus deterministic quality and procurement reasoning
 - `local-fallback`: if no backend model config is present, the UI still works with a deterministic fallback recommendation
 
 ## Setup
@@ -51,6 +52,66 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 The backend binds to `127.0.0.1:8001` by default.
+
+## Deploy
+
+The simplest deployment path in this repo is a single Dockerized web service:
+
+- the frontend is built with Vite
+- FastAPI serves the built `dist/` bundle
+- `/api/*` stays on the same origin, so there is no separate frontend env wiring required
+
+Files included for this:
+
+- [Dockerfile](/Users/loggcheng/Documents/financial-hack-apr-3/consensus-buy/Dockerfile)
+- [render.yaml](/Users/loggcheng/Documents/financial-hack-apr-3/consensus-buy/render.yaml)
+- [backend/app/main.py](/Users/loggcheng/Documents/financial-hack-apr-3/consensus-buy/backend/app/main.py) now serves the built frontend
+
+### Render
+
+1. Push this repo to GitHub.
+2. In Render, create a new Blueprint and point it at this repo.
+3. Render will pick up [render.yaml](/Users/loggcheng/Documents/financial-hack-apr-3/consensus-buy/render.yaml).
+4. Set these secret env vars in Render:
+
+```bash
+SEARCHAPI_API_KEY=...
+MINIMAX_API_KEY=...
+MINIMAX_BASE_URL=https://api.minimax.io/v1
+CROSSMINT_SERVER_API_KEY=...
+```
+
+Optional env vars:
+
+```bash
+MINIMAX_MODEL=MiniMax-M2.5
+DEEP_AGENTS_TIMEOUT_SECONDS=35
+SEARCHAPI_AMAZON_DOMAIN=amazon.com
+CROSSMINT_API_BASE_URL=https://staging.crossmint.com/api/2022-06-09
+N8N_CONSENSUS_WEBHOOK_URL=https://your-n8n-instance/webhook/consensusbuy
+```
+
+After deploy, the app should be available from the single Render service URL.
+
+### Local Docker smoke test
+
+From the repo root:
+
+```bash
+docker build -t consensusbuy .
+docker run --rm -p 8001:8001 \
+  -e SEARCHAPI_API_KEY=... \
+  -e MINIMAX_API_KEY=... \
+  -e MINIMAX_BASE_URL=https://api.minimax.io/v1 \
+  -e CROSSMINT_SERVER_API_KEY=... \
+  consensusbuy
+```
+
+Then open:
+
+```bash
+http://127.0.0.1:8001
+```
 
 If you want direct MiniMax execution through Deep Agents, set:
 

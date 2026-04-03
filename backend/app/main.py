@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from .contracts import ConsensusRequest, CrossmintOrderRequest, RequestMode
 from .crossmint import create_crossmint_order
 from .deep_agents_workflow import run_consensus_workflow, stream_live_market_heuristic_events
 
 load_dotenv()
+
+DIST_DIR = Path(__file__).resolve().parents[2] / "dist"
 
 app = FastAPI(title="ConsensusBuy Deep Agents Backend")
 
@@ -100,6 +104,29 @@ async def procurement_execute(payload: CrossmintOrderRequest):
         return await create_crossmint_order(payload)
     except Exception as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+if (DIST_DIR / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="frontend-assets")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def frontend_app(full_path: str):
+    if full_path.startswith("api/") or full_path == "health":
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+    if not DIST_DIR.exists():
+        return JSONResponse(status_code=404, content={"detail": "Frontend build not found"})
+
+    requested = DIST_DIR / full_path if full_path else DIST_DIR / "index.html"
+    if requested.exists() and requested.is_file():
+        return FileResponse(requested)
+
+    index_file = DIST_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
+
+    return JSONResponse(status_code=404, content={"detail": "Frontend build not found"})
 
 
 def main() -> None:
